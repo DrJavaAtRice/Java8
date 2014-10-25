@@ -4,7 +4,7 @@
 options {
   JAVA_UNICODE_ESCAPE    = true;
   STATIC                 = false;
-  JDK_VERSION            = "1.5";
+  DEBUG_PARSER = true;
 }
 
 PARSER_BEGIN(Parser)
@@ -666,7 +666,7 @@ public class Parser {
   }
   
   /**
-   * An expresion followed by a dot, "new", optional type arguments, a class name, optional class type arguments,
+   * An expression followed by a dot, "new", optional type arguments, a class name, optional class type arguments,
    * and constructor arguments.  May be an anonymous allocation if followed by a class body.
    */
   class InnerAllocationPrimary extends CompletedPrimary {
@@ -692,8 +692,36 @@ public class Parser {
 	  return new ExpressionPrimary(new AnonymousInnerAllocation(_outer, _targs, _name, _ctargs, _args, members, si));
     }
   }
-  
-  
+
+  class LambdaParams extends Primary {
+    private final List<FormalParameter> formal;
+    private final List<String> inferred;
+
+    public LambdaParams(List<FormalParameter> fparams, List<String> iparams, SourceInfo si) {
+        super(si);
+
+        formal = fparams;
+        inferred = iparams;
+    }
+
+    public LambdaParams(String param, SourceInfo si) {
+        super(si);
+
+        List<String> params = new LinkedList<String>();
+        params.add(param);
+        inferred = params;
+        formal = null;
+    }
+
+    public LambdaParams(SourceInfo si) {
+        this(null, null, si);
+    }
+
+    public boolean isFormal() { return formal != null; }
+    public boolean isInferred() { return inferred != null; }
+    public List<FormalParameter> getFormalParams() { return formal; }
+    public List<String> getInferredParams() { return inferred; }
+  }
 }
 
 PARSER_END(Parser)
@@ -934,6 +962,7 @@ PARSER_END(Parser)
     | < SEMICOLON: ";" >
     | < COMMA: "," >
     | < DOT: "." >
+    | < ARROW: "->" >
   }
   
   /* OPERATORS */
@@ -1794,7 +1823,6 @@ PARSER_END(Parser)
     }
   }
   
-  
   // Production for Initializer ===================================================
   
   /**
@@ -2654,8 +2682,10 @@ PARSER_END(Parser)
     Expression exp;
   }
   {
-    exp=conditionalExpression() [ exp=expressionSuffix(exp) ]
+    ( LOOKAHEAD(lambdaExpression()) exp=lambdaExpression()
+    | exp=conditionalExpression() [ exp=expressionSuffix(exp) ])
     {
+      System.out.println("Parsing expression...");
       return exp;
     }
   }
@@ -3103,6 +3133,7 @@ PARSER_END(Parser)
     t="("
     ( LOOKAHEAD(2) typ=primitiveType() ")" exp=unaryExpression()
     | typ=type() ")" exp=unaryExpressionNotPlusMinus()
+    | LOOKAHEAD(<ARROW>) typ=type() ")" exp=lambdaExpression()
     )
     { return new CastExpression(typ, exp, _range(t, exp)); }
   }
@@ -3202,6 +3233,61 @@ PARSER_END(Parser)
       )
     )*
     { return p.asExpression(); }
+  }
+
+  List<String> inferredParameters() :
+  {
+    Token param;
+    List<String> params = new LinkedList<String>();
+  }
+  {
+    (param=<IDENTIFIER> { params.add(param.image); } ("," param=<IDENTIFIER> { params.add(param.image); })*)?
+    { return params; }
+  }
+
+  LambdaParams lambdaParams() :
+  {
+    Token id, t1, t2;
+    List<String> iparams;
+    List<FormalParameter> fparams;
+  }
+  {
+    id=<IDENTIFIER>
+    { return new LambdaParams(id.image, _range(id, id)); }
+  | LOOKAHEAD(3) t1=<LPAREN> t2=<RPAREN>
+    { return new LambdaParams(_range(t1, t2)); }
+  | LOOKAHEAD(3) t1=<LPAREN> iparams=inferredParameters() t2=<RPAREN>
+    { return new LambdaParams(null, iparams, _range(t1, t2)); }
+  | t1=<LPAREN> fparams=formalParameters() t2=<RPAREN>
+    { return new LambdaParams(fparams, null, _range(t1, t2)); }
+  }
+
+  Expression lambdaExpression () :
+  {
+    LambdaParams params;
+    Expression exprBody = null;
+    BlockStatement blockBody = null;
+    Expression exp = null;
+  }
+  {
+      params=lambdaParams() <ARROW> [ LOOKAHEAD(2) blockBody=block()
+                                    | LOOKAHEAD(2) exprBody=expression()
+                                    ]
+    {
+      SourceInfo si = SourceInfo.NONE;
+      if (blockBody != null) {
+        si = _range(params.getSourceInfo(), token);
+      } else if (exprBody != null) {
+        si = _range(params.getSourceInfo(), token);
+      }
+
+      if (params.isFormal()) {
+        exp = new LambdaExpression(params.getFormalParams(), null, blockBody, exprBody, si);
+      } else if (params.isInferred()) {
+        exp = new LambdaExpression(null, params.getInferredParams(), blockBody, exprBody, si);
+      }
+      return exp;
+    }
   }
   
   /**

@@ -54,7 +54,7 @@ import static koala.dynamicjava.tree.ModifierSet.Modifier.*;
 
 /**
  * Tests the interactions parser.
- * @version $Id$
+ * @version $Id: ParserTest.java 5175 2010-01-20 08:46:32Z mgricken $
  */
 public class ParserTest extends TestCase {
   
@@ -625,9 +625,22 @@ public class ParserTest extends TestCase {
     args.add(new IntegerLiteral("5"));
     Expression expected = new SimpleMethodCall("meth", args, SourceInfo.NONE);
     verifyExprOutput("meth(5)", expected);
-  }  
+  }
 
-  
+  public void testLambdaNoArguments() throws ParseException {
+    Expression body = new AmbiguousName("a");
+    Expression expected = new LambdaExpression(null, null, null, body);
+    verifyExprOutput("() -> a", expected);
+  }
+
+  public void testLambdaOneArgument() throws ParseException {
+    List<String> args = new LinkedList<String>();
+    args.add("a");
+    Expression body = new AmbiguousName("a");
+    Expression expected = new LambdaExpression(null, args, null, body);
+    verifyExprOutput("a -> a", expected);
+  }
+
 //  /** Multiple input tests. */
 //  
 //  public void testMultipleInputs0() throws ParseException {
@@ -776,7 +789,7 @@ public class ParserTest extends TestCase {
 //
 ///**
 // * Tests the parser.
-// * @version $Id$
+// * @version $Id: ParserTest.java 5175 2010-01-20 08:46:32Z mgricken $
 // */
 //public class ParserTest extends ASTTestCase {
 //  public ParserTest(String name) {

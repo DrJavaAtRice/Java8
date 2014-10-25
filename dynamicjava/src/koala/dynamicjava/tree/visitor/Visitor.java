@@ -138,6 +138,7 @@ public interface Visitor<T> {
   T visit(BitAndAssignExpression node);
   T visit(ExclusiveOrAssignExpression node);
   T visit(BitOrAssignExpression node);
+  T visit(LambdaExpression node);
   T visit(BlockStatement node);
   T visit(ClassDeclaration node);
   T visit(InterfaceDeclaration node);
