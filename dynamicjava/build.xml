@@ -32,7 +32,6 @@
   
   <property environment="env" />
   <property name="java6-home" value="${env.JAVA6_HOME}" />
-  <property name="java5-home" value="${env.JAVA5_HOME}" />
   <property name="javacc-home"  value="${env.JAVACC_HOME}" />
   <property name="clover-jar" value="${env.CLOVER_JAR}" />
   <property name="findbugs-home" value="${env.FINDBUGS_HOME}" />
@@ -76,8 +75,6 @@
     <echo message="      the 'java' command is used by default in testing/running; " />
     <echo message="      the 'svn' command is used to generate version numbers and " />
     <echo message="      in Subversion targets" />
-    <echo message="JAVA5_HOME: Home folder of the Java 5 JRE or JDK (required for" />
-    <echo message="            compiling and '-5' targets)" />
     <echo message="JAVA6_HOME: Home folder of the Java 6 JRE or JDK (required for" />
     <echo message="            '-6' targets)" />
     <echo message="JAVACC_HOME: Top-level directory of JavaCC (version 4.1+ is preferred)" />
@@ -165,15 +162,22 @@
     <echo message="Processing ${version-source}" />
     <copy file="${version-source}" tofile="${version-target}" filtering="yes" />
     
-    <antcall target="generate-ast">
-      <param name="generate-sourcefile" value="${type-ast}" />
-      <param name="generate-dir" value="${type-ast-dir}" />
-    </antcall>
+    <taskdef name="astgen" classpath="lib/buildlib/astgen.jar" classname="edu.rice.cs.astgen.AntTask" />
+    <echo message="Processing ${type-ast}" />
+    <delete dir="${type-ast-dir}" />
+    <mkdir dir="${type-ast-dir}" />
+    <astgen file="${type-ast}" />
     
-    <antcall target="generate-parser">
-      <param name="generate-sourcefile" value="${dynamicjava-parser}" />
-      <param name="generate-dir" value="${dynamicjava-parser-dir}" />
-    </antcall>
+    <echo message="Generating parser from ${dynamicjava-parser}" />
+    <delete dir="${dynamicjava-parser-dir}" />
+    <mkdir dir="${dynamicjava-parser-dir}" />
+    <javacc target="${dynamicjava-parser}"
+            outputdirectory="${dynamicjava-parser-dir}"
+            javacchome="${javacc-home}" />
+    <!-- Fix problems in generated code that cause compiler warnings (occurs in javacc 4.1) -->
+    <replace dir="${dynamicjava-parser-dir}"
+             token="int hiByte = (int)(curChar >> 8);"
+             value="int hiByte = curChar >> 8;" />
     
     <!-- Any additional files to be generated may be processed here -->
 
@@ -191,30 +195,7 @@
     <include name="${dynamicjava-parser-dir}" />
     <!-- Additional generated sources should be listed here -->
   </patternset>
-
-  <!-- Must be called from an antcall -->
-  <target name="generate-parser" depends="check-generate-dir-from-file" unless="already-generated">
-    <echo message="Processing ${generate-sourcefile}" />
-    <delete dir="${generate-dir}" />
-    <mkdir dir="${generate-dir}" />
-    <javacc target="${generate-sourcefile}" outputdirectory="${generate-dir}" javacchome="${javacc-home}" />
-    <!-- Fix problems in generated code that cause compiler warnings (occurs in javacc 4.1) -->
-    <replace dir="${generate-dir}"
-             token="int hiByte = (int)(curChar >> 8);"
-             value="int hiByte = curChar >> 8;" />
-  </target>
-   
-  <!-- Must be called from an antcall -->
-  <target name="generate-ast" depends="check-generate-dir-from-file" unless="already-generated">
-    <taskdef name="astgen" classpath="lib/buildlib/astgen.jar" classname="edu.rice.cs.astgen.AntTask" />
-    <echo message="Processing ${generate-sourcefile}" />
-    <delete dir="${generate-dir}" />
-    <mkdir dir="${generate-dir}" />
-    <astgen file="${generate-sourcefile}" />
-  </target>
-  
-  
-  
+     
   <!-- *******************
        Compilation Targets
        ******************* -->
@@ -223,7 +204,7 @@
           description="Compile all source files (after generating the source)">
   </target>
   
-  <target name="do-compile" depends="resolve-java5-runtime">
+  <target name="do-compile" depends="resolve-java6-runtime">
   
     <echo message="Compiling src directory to classes/base and classes/test with command 'javac'" />
     
@@ -235,8 +216,8 @@
       <fileset dir="classes/test" includes="**/*" />
     </move>
     
-    <javac srcdir="src" destdir="classes/base" source="1.5" target="1.5"
-           bootclasspath="${java5-runtime}" sourcepath="" includeAntRuntime="no"
+    <javac srcdir="src" destdir="classes/base" source="1.6" target="1.6"
+           bootclasspath="${java6-runtime}" sourcepath="" includeAntRuntime="no"
            executable="javac" fork="yes" memoryMaximumSize="512M"
            debug="on" optimize="off" deprecation="on"	>
       <classpath>
@@ -320,15 +301,7 @@
     <antcall target="iterate-tests">
       <param name="test-jvm" value="${java6-exec}" />
     </antcall>
-  </target>
-  
-  <target name="test-5" depends="compile, resolve-java5-exec" unless="skip-test"
-          description="Run all tests under Java 5 (after compiling); use -Dtest-spec=... to filter">
-    <antcall target="iterate-tests">
-      <param name="test-jvm" value="${java5-exec}" />
-    </antcall>
-  </target>
-  
+  </target>  
   
   <target name="iterate-tests" depends="resolve-test-formatter-class">
     <!-- Calls do-test, unless that is overridden by the caller -->
@@ -502,8 +475,8 @@
         <pathelement location="lib/buildlib/junit.jar" />
         <pathelement location="lib/buildlib/jlbench-base.jar" />
       </classpath>
-      <link href="http://java.sun.com/j2se/1.5/docs/api" />
-      <link href="http://junit.org/junit/javadoc/3.8.1" />
+      <link href="http://docs.oracle.com/javase/6/docs/api/" />
+      <link href="http://junit.org/apidocs/index.html" />
       <link href="http://drjava.org/javadoc/plt" />
       <!-- Additional external library APIs may be listed here -->
     </javadoc>
@@ -515,10 +488,7 @@
   
   <target name="clover-6" depends="clean, setup-clover, test-6, report-clover" 
           description="Generate a Clover test coverage report under Java 6" />
-  
-  <target name="clover-5" depends="clean, setup-clover, test-5, report-clover" 
-          description="Generate a Clover test coverage report under Java 5" />
-  
+    
   <target name="report-clover" depends="resolve-version-tag">
     <echo message="Generating Clover report" />
     <clover-report>
@@ -843,16 +813,15 @@
   <!-- ***************************
        Property-resolution Targets 
        *************************** -->
-  
-  <target name="resolve-java6-runtime">
+    <target name="resolve-java6-runtime">
     <!-- We rely on "location" to generate a platform-specific path; note that properties
          are immutable and so java6-runtime will only be set the *first* time. -->
 
     <property name="java6-runtime-1" location="${java6-home}/lib/rt.jar" />
-    <available property="java5-runtime" value="${java6-runtime-1}" file="${java6-runtime-1}" />
+    <available property="java6-runtime" value="${java6-runtime-1}" file="${java6-runtime-1}" />
 
     <property name="java6-runtime-2" location="${java6-home}/jre/lib/rt.jar" />
-    <available property="java5-runtime" value="${java6-runtime-2}" file="${java6-runtime-2}" />
+    <available property="java6-runtime" value="${java6-runtime-2}" file="${java6-runtime-2}" />
 
     <property name="java6-runtime-3" location="${java6-home}/../Classes/classes.jar" />
     <available property="java6-runtime" value="${java6-runtime-3}" file="${java6-runtime-3}" />
@@ -875,39 +844,6 @@
     <available property="java6-exec" value="${java6-exec-2}" file="${java6-exec-2}" />
 
     <fail message="Can't find the java executable in the Java 6 home: ${java6-home}" unless="java6-exec" />
-  </target>
-  
-  <target name="resolve-java5-runtime">
-    <!-- We rely on "location" to generate a platform-specific path; note that properties
-         are immutable and so java5-runtime will only be set the *first* time. -->
-
-    <property name="java5-runtime-1" location="${java5-home}/lib/rt.jar" />
-    <available property="java5-runtime" value="${java5-runtime-1}" file="${java5-runtime-1}" />
-
-    <property name="java5-runtime-2" location="${java5-home}/jre/lib/rt.jar" />
-    <available property="java5-runtime" value="${java5-runtime-2}" file="${java5-runtime-2}" />
-
-    <property name="java5-runtime-3" location="${java5-home}/../Classes/classes.jar" />
-    <available property="java5-runtime" value="${java5-runtime-3}" file="${java5-runtime-3}" />
-
-    <fail message="Can't find rt.jar in the Java 5 home: ${java5-home}" unless="java5-runtime" />
-  </target>
-  
-  <target name="resolve-java5-exec">
-    <!-- We rely on "location" to generate a platform-specific path -->
-
-    <property name="java5-exec-1" location="${java5-home}/bin/java.exe" />
-    <condition property="java5-exec" value="${java5-exec-1}">
-      <and>
-        <available file="${java5-exec-1}" />
-        <os family="windows" />
-      </and>
-    </condition>
-    
-    <property name="java5-exec-2" location="${java5-home}/bin/java" />
-    <available property="java5-exec" value="${java5-exec-2}" file="${java5-exec-2}" />
-
-    <fail message="Can't find the java executable in the Java 5 home: ${java5-home}" unless="java5-exec" />
   </target>
   
   
@@ -994,13 +930,7 @@
   
   <!-- Sets svn-revision to the current "Last Changed Rev" of "svn info". -->
   <target name="resolve-svn-revision">
-  <!-- do nothing -->
-  </target>
-  
-<!-- superseded old code
-  <!- Sets svn-revision to the current "Last Changed Rev" of "svn info". ->
-  <target name="resolve-svn-revision">
-    <exec executable="svn" failonerror="yes" output="svn-info.txt">
+    <exec executable="svn" failonerror="no" output="svn-info.txt">
       <arg value="info" />
     </exec>
     <loadfile property="svn-revision" srcfile="svn-info.txt">
@@ -1014,7 +944,7 @@
     </loadfile>
     <delete file="svn-info.txt" />
   </target>
--->
+  
 
   <!-- Sets "already-generated" if "generate-file" is more recent than "generate-sourcefile";
        otherwise, the out-of-date target file is deleted (if it exists).  Note that, since
