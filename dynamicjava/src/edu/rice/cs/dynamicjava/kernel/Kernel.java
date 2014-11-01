@@ -19,9 +19,11 @@ import java.util.UUID;
 public class Kernel {
   private final UUID session;
 
-  private final Thread heartbeat;
-  private final Thread executor;
+  private final IKernelRunnable heartbeat;
+  private final IKernelRunnable executor;
   private final Thread control;
+
+  private volatile boolean isRunning = true;
 
   public Kernel(String configPath, Interpreter i) throws FileNotFoundException {
     session = UUID.randomUUID();
@@ -43,41 +45,43 @@ public class Kernel {
     executor = new Executor(i, session, ctx, shellAddr, iopubAddr);
 
     String controlAddr = String.format("%s://%s:%d", transport, ip, config.getInt("control_port"));
-    control = new Control(ctx, controlAddr);
-
-//    stdin = ctx.createSocket(ZMQ.ROUTER);
-//    stdin.bind(String.format("%s://%s:%d", transport, ip, config.getInt("stdin_port")));
-//
-//    iopub = ctx.createSocket(ZMQ.PUB);
-//    iopub.bind();
+    control = new Control(heartbeat, executor, session, ctx, controlAddr);
   }
 
-  private static class Heartbeat extends Thread {
-    private final ZContext ctx;
+  private void shutdown() {
+    isRunning = false;
+  }
+
+  private static class Heartbeat extends Thread implements IKernelRunnable {
     private final ZMQ.Socket skt;
+    private volatile boolean isRunning = true;
 
     public Heartbeat(ZContext ctx, String addr) {
-      this.ctx = ctx;
       skt = ctx.createSocket(ZMQ.REP);
       skt.bind(addr);
     }
 
+    public void shutdown() {
+      isRunning = false;
+    }
+
     @Override
     public void run() {
-      while (true) {
+      while (isRunning) {
         byte[] msg = skt.recv();
         skt.send(msg);
       }
     }
   }
 
-  private static class Executor extends Thread {
+  private static class Executor extends Thread implements IKernelRunnable {
     private final Interpreter i;
     private final UUID session;
     private final ZMQ.Socket shellSkt;
     private final ZMQ.Socket iopubSkt;
 
     private int execCount = 1;
+    private volatile boolean isRunning = true;
 
     public Executor(Interpreter i, UUID session, ZContext ctx, String shellAddr, String iopubAddr) {
       this.i = i;
@@ -89,9 +93,13 @@ public class Kernel {
       iopubSkt.bind(iopubAddr);
     }
 
+    public void shutdown() {
+      isRunning = false;
+    }
+
     @Override
     public void run() {
-      while (true) {
+      while (isRunning) {
         Message msg = new Message(ZMsg.recvMsg(shellSkt));
 
         String msgType = msg.getHeader().getString("msg_type");
@@ -169,7 +177,8 @@ public class Kernel {
             msg.respond(session, "execute_reply", retContent).serialize().send(shellSkt);
           }
           execCount += 1;
-        } else {
+        } else if (msgType.equals("shutdown_request")) { }
+        else {
           System.out.format("ERROR: Unknown message type: %s\n", msgType);
         }
       }
@@ -177,19 +186,34 @@ public class Kernel {
   }
 
   private static class Control extends Thread {
-    private final ZContext ctx;
+    private final UUID session;
     private final ZMQ.Socket skt;
+    private final IKernelRunnable heartbeat;
+    private final IKernelRunnable executor;
 
-    public Control(ZContext ctx, String addr) {
-      this.ctx = ctx;
+    public Control(IKernelRunnable heartbeat, IKernelRunnable executor, UUID session, ZContext ctx, String addr) {
+      this.heartbeat = heartbeat;
+      this.executor = executor;
+      this.session = session;
       skt = ctx.createSocket(ZMQ.ROUTER);
       skt.bind(addr);
     }
 
     @Override
     public void run() {
-      Message msg = new Message(ZMsg.recvMsg(skt));
-      System.out.println(msg.toString());
+      while (true) {
+        Message msg = new Message(ZMsg.recvMsg(skt));
+        String msgType = msg.getHeader().getString("msg_type");
+        if (msgType.equals("shutdown_request")) {
+          executor.shutdown();
+          heartbeat.shutdown();
+
+          JSONObject retContent = new JSONObject();
+          retContent.put("restart", "false");
+          msg.respond(session, "shutdown_reply", retContent).serialize().send(skt);
+          return;
+        }
+      }
     }
   }
 
