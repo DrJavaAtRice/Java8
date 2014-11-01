@@ -154,8 +154,20 @@ public class Kernel {
             retContent = new JSONObject();
             retContent.put("execution_state", "idle");
             msg.respond(session, "status", retContent).serialize().send(iopubSkt);
-          }
 
+            // Send a reply message to the execution request.
+            retContent = new JSONObject();
+            retContent.put("execution_count", execCount);
+            retContent.put("status", "error");
+            retContent.put("ename", e.getClass().getSimpleName());
+            retContent.put("evalue", e.getUserMessage());
+            JSONArray traceback = new JSONArray();
+            for (StackTraceElement te : e.getStackTrace()) {
+              traceback.put(te.toString());
+            }
+            retContent.put("traceback", traceback);
+            msg.respond(session, "execute_reply", retContent).serialize().send(shellSkt);
+          }
           execCount += 1;
         } else {
           System.out.format("ERROR: Unknown message type: %s\n", msgType);
