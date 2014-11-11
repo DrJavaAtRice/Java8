@@ -12,8 +12,10 @@ import org.zeromq.ZMQ;
 import org.zeromq.ZContext;
 import org.zeromq.ZMsg;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.PrintStream;
 import java.util.UUID;
 
 public class Kernel {
@@ -23,10 +25,13 @@ public class Kernel {
   private final IKernelRunnable executor;
   private final Thread control;
 
-  private volatile boolean isRunning = true;
+  private final ByteArrayOutputStream out;
+  private final ByteArrayOutputStream err;
 
   public Kernel(String configPath, Interpreter i) throws FileNotFoundException {
     session = UUID.randomUUID();
+    out = new ByteArrayOutputStream();
+    err = new ByteArrayOutputStream();
 
     // Open JSON config file passed to kernel.
     JSONObject config = new JSONObject(new JSONTokener(new FileReader(configPath)));
@@ -42,7 +47,7 @@ public class Kernel {
 
     String shellAddr = String.format("%s://%s:%d", transport, ip, config.getInt("shell_port"));
     String iopubAddr = String.format("%s://%s:%d", transport, ip, config.getInt("iopub_port"));
-    executor = new Executor(i, session, ctx, shellAddr, iopubAddr);
+    executor = new Executor(i, session, ctx, shellAddr, iopubAddr, out, err);
 
     String controlAddr = String.format("%s://%s:%d", transport, ip, config.getInt("control_port"));
     control = new Control(heartbeat, executor, session, ctx, controlAddr);
@@ -79,13 +84,17 @@ public class Kernel {
     private final UUID session;
     private final ZMQ.Socket shellSkt;
     private final ZMQ.Socket iopubSkt;
+    private final ByteArrayOutputStream out;
+    private final ByteArrayOutputStream err;
 
     private int execCount = 1;
     private volatile boolean isRunning = true;
 
-    public Executor(Interpreter i, UUID session, ZContext ctx, String shellAddr, String iopubAddr) {
+    public Executor(Interpreter i, UUID session, ZContext ctx, String shellAddr, String iopubAddr, ByteArrayOutputStream out, ByteArrayOutputStream err) {
       this.i = i;
       this.session = session;
+      this.out = out;
+      this.err = err;
 
       shellSkt = ctx.createSocket(ZMQ.ROUTER);
       shellSkt.bind(shellAddr);
@@ -128,12 +137,27 @@ public class Kernel {
           // Begin execution.
           try {
             Option<Object> result = i.interpret(code);
+
+            // Broadcast stdout and stderr.
+            retContent = new JSONObject();
+            retContent.put("name", "stdout");
+            retContent.put("data", out.toString());
+            out.reset();
+            msg.respond(session, "stream", retContent).serialize().send(iopubSkt);
+
+            retContent = new JSONObject();
+            retContent.put("name", "stderr");
+            retContent.put("data", err.toString());
+            err.reset();
+            msg.respond(session, "stream", retContent).serialize().send(iopubSkt);
+
+            // Broadcast execution result as a string.
+            if (result.isSome()) {
             String resultStr = result.apply(new OptionVisitor<Object, String>() {
               public String forSome(Object o) { return TextUtil.toString(o); }
               public String forNone() { return ""; }
             });
 
-            // Broadcast execution result as a string.
             retContent = new JSONObject();
             retContent.put("execution_count", execCount);
             JSONObject data = new JSONObject();
@@ -141,6 +165,7 @@ public class Kernel {
             retContent.put("data", data);
             retContent.put("metadata", new JSONObject());
             msg.respond(session, "pyout", retContent).serialize().send(iopubSkt);
+            }
 
             // Send a kernel status message that the kernel is now idle.
             retContent = new JSONObject();
@@ -156,8 +181,6 @@ public class Kernel {
             retContent.put("user_expressions", new JSONObject());
             msg.respond(session, "execute_reply", retContent).serialize().send(shellSkt);
           } catch (InterpreterException e) {
-            System.out.println(e.toString());
-
             // Send a kernel status message that the kernel is now idle.
             retContent = new JSONObject();
             retContent.put("execution_state", "idle");
@@ -221,5 +244,11 @@ public class Kernel {
     heartbeat.start();
     executor.start();
     control.start();
+
+    // Replace System.out, System.err with custom streams so that we can capture their output.
+    PrintStream kernelOut = new PrintStream(out, true);
+    PrintStream kernelErr = new PrintStream(err, true);
+    System.setOut(kernelOut);
+    System.setErr(kernelErr);
   }
 }
