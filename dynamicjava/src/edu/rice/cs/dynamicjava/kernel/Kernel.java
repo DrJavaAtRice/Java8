@@ -16,6 +16,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.LinkedList;
 import java.util.UUID;
 
 public class Kernel {
@@ -51,10 +54,6 @@ public class Kernel {
 
     String controlAddr = String.format("%s://%s:%d", transport, ip, config.getInt("control_port"));
     control = new Control(heartbeat, executor, session, ctx, controlAddr);
-  }
-
-  private void shutdown() {
-    isRunning = false;
   }
 
   private static class Heartbeat extends Thread implements IKernelRunnable {
@@ -106,6 +105,53 @@ public class Kernel {
       isRunning = false;
     }
 
+    private String[] autocomplete(String query) {
+      // Cut the last plausible object out of the query string.
+      String object = query;
+      for (int i = query.length() - 1; i >= 0; i--) {
+        char c = query.charAt(i);
+        if (!(Character.isLetterOrDigit(c) || c == '.')) {
+          object = query.substring(i + 1);
+          break;
+        }
+      }
+
+      String name = "";
+      int index = object.lastIndexOf('.');
+      if (index != -1) {
+        name = object.substring(index + 1, object.length());
+        object = object.substring(0, index);
+      }
+
+      // Check whether the query is an object in scope. If it is, we return all its public fields and methods.
+      if (object != null) {
+        try {
+          Option<Object> mResult = i.interpret(object);
+          if (mResult.isSome()) {
+            Object result = mResult.unwrap();
+            LinkedList<String> results = new LinkedList<String>();
+            for (Field f : result.getClass().getDeclaredFields()) {
+              String fName = f.getName();
+              if (fName.startsWith(name)) {
+                results.push(object + "." + fName);
+              }
+            }
+            for (Method m : result.getClass().getDeclaredMethods()) {
+              String mName = m.getName();
+              if (mName.startsWith(name)) {
+                results.push(object + "." + mName);
+              }
+            }
+
+            return results.toArray(new String[0]);
+          }
+        } catch (InterpreterException e) {
+        }
+      }
+
+      return new String[0];
+    }
+
     @Override
     public void run() {
       while (isRunning) {
@@ -120,6 +166,16 @@ public class Kernel {
           content.put("language", "java");
           content.put("language_version", new JSONArray("[1,7]"));
           msg.respond(session, "kernel_info_reply", content).serialize().send(shellSkt);
+        } else if (msgType.equals("complete_request")) {
+          String query = msgContent.getString("text");
+          String[] results = autocomplete(query);
+
+          JSONObject retContent = new JSONObject();
+          retContent.put("matches", new JSONArray(results));
+          retContent.put("status", "ok");
+          retContent.put("matched_text", query);
+
+          msg.respond(session, "complete_reply", retContent).serialize().send(shellSkt);
         } else if (msgType.equals("execute_request")) {
           // Send a kernel status message that the kernel is busy executing.
           JSONObject retContent = new JSONObject();
@@ -153,18 +209,23 @@ public class Kernel {
 
             // Broadcast execution result as a string.
             if (result.isSome()) {
-            String resultStr = result.apply(new OptionVisitor<Object, String>() {
-              public String forSome(Object o) { return TextUtil.toString(o); }
-              public String forNone() { return ""; }
-            });
+              String resultStr = result.apply(new OptionVisitor<Object, String>() {
+                public String forSome(Object o) {
+                  return TextUtil.toString(o);
+                }
 
-            retContent = new JSONObject();
-            retContent.put("execution_count", execCount);
-            JSONObject data = new JSONObject();
-            data.put("text/plain", resultStr);
-            retContent.put("data", data);
-            retContent.put("metadata", new JSONObject());
-            msg.respond(session, "pyout", retContent).serialize().send(iopubSkt);
+                public String forNone() {
+                  return "";
+                }
+              });
+
+              retContent = new JSONObject();
+              retContent.put("execution_count", execCount);
+              JSONObject data = new JSONObject();
+              data.put("text/plain", resultStr);
+              retContent.put("data", data);
+              retContent.put("metadata", new JSONObject());
+              msg.respond(session, "pyout", retContent).serialize().send(iopubSkt);
             }
 
             // Send a kernel status message that the kernel is now idle.
@@ -200,8 +261,8 @@ public class Kernel {
             msg.respond(session, "execute_reply", retContent).serialize().send(shellSkt);
           }
           execCount += 1;
-        } else if (msgType.equals("shutdown_request")) { }
-        else {
+        } else if (msgType.equals("shutdown_request")) {
+        } else {
           System.out.format("ERROR: Unknown message type: %s\n", msgType);
         }
       }
