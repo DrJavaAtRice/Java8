@@ -84,4 +84,12 @@ public class RuntimeBindings {
     else { throw new IllegalArgumentException("This value " + c + " is undefined"); }
   }
 
+  public Map<LocalVariable, Object> getLocalVariables() {
+    Map<LocalVariable, Object> vars = new HashMap<LocalVariable, Object>();
+    if (_parent != null) {
+      vars.putAll(_parent.getLocalVariables());
+    }
+    vars.putAll(_vars);
+    return vars;
+  }
 }

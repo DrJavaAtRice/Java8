@@ -1,6 +1,9 @@
 package edu.rice.cs.dynamicjava.interpreter;
 
 import java.io.StringReader;
+import java.util.Map;
+
+import edu.rice.cs.dynamicjava.symbol.LocalVariable;
 import edu.rice.cs.plt.tuple.Option;
 import edu.rice.cs.plt.tuple.Pair;
 import edu.rice.cs.plt.lambda.WrappedException;
@@ -17,7 +20,6 @@ import static edu.rice.cs.plt.debug.DebugUtil.debug;
  * The external interface for the interpreter.
  */
 public class Interpreter {
-
   private final Options _opt;
   private TypeContext _typeContext;
   private RuntimeBindings _bindings;
@@ -57,6 +59,10 @@ public class Interpreter {
     _bindings = evalResult.first();
     return evalResult.second();
   }
+
+  public Map<LocalVariable, Object> getLocalVariables() {
+    return _bindings.getLocalVariables();
+  }
   
   private Iterable<Node> parse(String code) throws InterpreterException {
     try {
@@ -82,5 +88,4 @@ public class Interpreter {
       else { throw e; }
     }
   }
-  
 }

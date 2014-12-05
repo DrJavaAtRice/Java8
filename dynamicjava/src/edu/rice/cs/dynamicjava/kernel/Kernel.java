@@ -16,10 +16,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.LinkedList;
+import java.net.URLClassLoader;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 public class Kernel {
   private final UUID session;
@@ -79,18 +78,20 @@ public class Kernel {
   }
 
   private static class Executor extends Thread implements IKernelRunnable {
-    private final Interpreter i;
+    private final Interpreter interpreter;
     private final UUID session;
     private final ZMQ.Socket shellSkt;
     private final ZMQ.Socket iopubSkt;
     private final ByteArrayOutputStream out;
     private final ByteArrayOutputStream err;
+    private Future<Autocompleter> autocompleter;
 
     private int execCount = 1;
     private volatile boolean isRunning = true;
 
-    public Executor(Interpreter i, UUID session, ZContext ctx, String shellAddr, String iopubAddr, ByteArrayOutputStream out, ByteArrayOutputStream err) {
-      this.i = i;
+    public Executor(Interpreter i, UUID session, ZContext ctx, String shellAddr, String iopubAddr,
+                    ByteArrayOutputStream out, ByteArrayOutputStream err) {
+      this.interpreter = i;
       this.session = session;
       this.out = out;
       this.err = err;
@@ -99,58 +100,22 @@ public class Kernel {
       shellSkt.bind(shellAddr);
       iopubSkt = ctx.createSocket(ZMQ.PUB);
       iopubSkt.bind(iopubAddr);
+
+      // Creating the autocompleter takes a long time, so do that asynchronously.
+      ExecutorService executor = Executors.newSingleThreadExecutor();
+      autocompleter = executor.submit(new Callable<Autocompleter>() {
+        @Override
+        public Autocompleter call() throws Exception {
+          return new Autocompleter(interpreter);
+        }
+      });
+      executor.shutdown();
     }
 
     public void shutdown() {
       isRunning = false;
     }
 
-    private String[] autocomplete(String query) {
-      // Cut the last plausible object out of the query string.
-      String object = query;
-      for (int i = query.length() - 1; i >= 0; i--) {
-        char c = query.charAt(i);
-        if (!(Character.isLetterOrDigit(c) || c == '.')) {
-          object = query.substring(i + 1);
-          break;
-        }
-      }
-
-      String name = "";
-      int index = object.lastIndexOf('.');
-      if (index != -1) {
-        name = object.substring(index + 1, object.length());
-        object = object.substring(0, index);
-      }
-
-      // Check whether the query is an object in scope. If it is, we return all its public fields and methods.
-      if (object != null) {
-        try {
-          Option<Object> mResult = i.interpret(object);
-          if (mResult.isSome()) {
-            Object result = mResult.unwrap();
-            LinkedList<String> results = new LinkedList<String>();
-            for (Field f : result.getClass().getDeclaredFields()) {
-              String fName = f.getName();
-              if (fName.startsWith(name)) {
-                results.push(object + "." + fName);
-              }
-            }
-            for (Method m : result.getClass().getDeclaredMethods()) {
-              String mName = m.getName();
-              if (mName.startsWith(name)) {
-                results.push(object + "." + mName);
-              }
-            }
-
-            return results.toArray(new String[0]);
-          }
-        } catch (InterpreterException e) {
-        }
-      }
-
-      return new String[0];
-    }
 
     @Override
     public void run() {
@@ -168,7 +133,17 @@ public class Kernel {
           msg.respond(session, "kernel_info_reply", content).serialize().send(shellSkt);
         } else if (msgType.equals("complete_request")) {
           String query = msgContent.getString("text");
-          String[] results = autocomplete(query);
+
+          String[] results = {};
+          if (autocompleter.isDone()) {
+            try {
+              results = autocompleter.get().complete(query);
+            } catch (InterruptedException e) {
+              e.printStackTrace();
+            } catch (ExecutionException e) {
+              e.printStackTrace();
+            }
+          }
 
           JSONObject retContent = new JSONObject();
           retContent.put("matches", new JSONArray(results));
@@ -192,7 +167,7 @@ public class Kernel {
 
           // Begin execution.
           try {
-            Option<Object> result = i.interpret(code);
+            Option<Object> result = interpreter.interpret(code);
 
             // Broadcast stdout and stderr.
             retContent = new JSONObject();
