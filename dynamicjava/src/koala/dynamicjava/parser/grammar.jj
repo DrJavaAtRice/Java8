@@ -795,7 +795,7 @@ PARSER_END(Parser)
     | < CLASS: "class" >
     | < CONST: "const" >
     | < CONTINUE: "continue" >
-    | < _DEFAULT: "default" >
+    | < DEFAULT: "default" >
     | < DO: "do" >
     | < DOUBLE: "double" >
     | < ELSE: "else" >
@@ -1316,7 +1316,18 @@ PARSER_END(Parser)
         }
         flags.add(Modifier.SYNCHRONIZED);
       }
-    | 
+    |
+      "default"
+      {
+	if (flags.contains(Modifier.PRIVATE)) {
+	  throw new ParseError(reader.getMessage("default.private", null), _range(token, token));
+ 	}
+	if (flags.contains(Modifier.ABSTRACT)) {
+	  throw new ParseError(reader.getMessage("default.abstract", null), _range(token, token));
+	}
+	flags.add(Modifier.DEFAULT);
+      } 
+    |
       "strictfp"
       {
         if (flags.contains(Modifier.STRICT)) {

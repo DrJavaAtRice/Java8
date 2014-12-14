@@ -127,6 +127,10 @@ public class ModifierSet extends Node {
       public int getBits() { return 0x0020; }
       public String getName() { return "synchronized"; }
     },
+    DEFAULT {
+      public int getBits() { return 0x8000; }
+      public String getName() { return "default"; }
+    },
     NATIVE {
       public int getBits() { return 0x0100; }
       public String getName() { return "native"; }

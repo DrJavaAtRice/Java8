@@ -152,4 +152,5 @@ public interface Visitor<T> {
   T visit(InstanceInitializer node);
   T visit(ModifierSet node);
   T visit(Annotation node);
+  T visit(MethodReference node);
 }
