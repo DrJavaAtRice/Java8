@@ -5,7 +5,7 @@ import java.util.*;
 public class LambdaExpression extends PrimaryExpression {
 private Option<List<FormalParameter>> typedParams;
 private Option<List<String>> inferredParams;
-// A lambda expression can have either a block or an expression as its body.
+// A lambda expression have either the block as its body, the body could also be an expression, refer to Java 8 documentation for details
 private Option<BlockStatement> blockBody;
 private Option<Expression> exprBody;
 public LambdaExpression(List<FormalParameter> typedParams,
