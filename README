@@ -1,1 +1,1 @@
-This is a test of merging between project repositories and the main repository.The Java8 Project was developed by Jeff Feser, Zhipeng Wang and Bojun Wang
+The Java8 Project was developed by Jeff Feser, Zhipeng Wang and Bojun Wang, Zhipeng Wang studied the Lambda Expression in Java 8 and Analyzed the AST, while Jeff Feser wrote updated parser to generate AST node for Lambda Expression, Bojun Wang wrote parser as well. 
