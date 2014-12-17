@@ -37,6 +37,7 @@ import koala.dynamicjava.tree.tiger.HookTypeName;
  *
  * @author Stephane Hillion
  * @version 1.0 - 1999/04/24
+ * Updated with the MethodReference Node to support lambda expression in Java8
  */
 
 public interface Visitor<T> {
