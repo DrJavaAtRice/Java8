@@ -7,6 +7,7 @@ private Option<List<FormalParameter>> typedParams;
 private Option<List<String>> inferredParams;
 // A lambda expression have either the block as its body, the body could also be an expression, 
 //refer to Java 8 documentation for details
+//lambda expression for Java8
 private Option<BlockStatement> blockBD;
 private Option<Expression> exprBD;
 public LambdaExpression(List<FormalParameter> typedParams,
