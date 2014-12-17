@@ -1320,10 +1320,10 @@ PARSER_END(Parser)
       "default"
       {
 	if (flags.contains(Modifier.PRIVATE)) {
-	  throw new ParseError(reader.getMessage("default.private", null), _range(token, token));
+	  throw new ParseError(reader.getMessage("default.private_Error", null), _range(token, token));
  	}
 	if (flags.contains(Modifier.ABSTRACT)) {
-	  throw new ParseError(reader.getMessage("default.abstract", null), _range(token, token));
+	  throw new ParseError(reader.getMessage("default.abstract_Error", null), _range(token, token));
 	}
 	flags.add(Modifier.DEFAULT);
       } 
