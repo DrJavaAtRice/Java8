@@ -5,14 +5,15 @@ import java.util.*;
 public class LambdaExpression extends PrimaryExpression {
 private Option<List<FormalParameter>> typedParams;
 private Option<List<String>> inferredParams;
-// A lambda expression have either the block as its body, the body could also be an expression, refer to Java 8 documentation for details
-private Option<BlockStatement> blockBody;
-private Option<Expression> exprBody;
+// A lambda expression have either the block as its body, the body could also be an expression, 
+//refer to Java 8 documentation for details
+private Option<BlockStatement> blockBD;
+private Option<Expression> exprBD;
 public LambdaExpression(List<FormalParameter> typedParams,
 List<String> inferredParams,
-BlockStatement blockBody,
-Expression exprBody) {
-this(typedParams, inferredParams, blockBody, exprBody, SourceInfo.NONE);
+BlockStatement blockBD,
+Expression exprBD) {
+this(typedParams, inferredParams, blockBD, exprBD, SourceInfo.NONE);
 }
 /**
 * This class creates new lambda expression, which is newly introduced by Java 8. 
