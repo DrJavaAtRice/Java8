@@ -72,7 +72,7 @@ public class Kernel {
     public void run() {
       while (isRunning) {
         byte[] msg = skt.recv();
-        skt.send(msg);
+        skt.send(msg, msg.length);
       }
     }
   }

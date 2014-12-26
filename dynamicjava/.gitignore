@@ -1,5 +1,5 @@
 classes/
-*.jar
+dynamicjava*.jar
 
 # Generated code
 src/edu/rice/cs/dynamicjava/symbol/type/*
