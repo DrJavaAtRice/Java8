@@ -5,7 +5,7 @@ import java.util.*;
 public class MethodReference extends PrimaryExpression {
   private Option<TypeName> typ;
   private Option<String> methodName;
-  public LambdaExpression(TypeName type,
+  public MethodReference(TypeName type,
                           String methodName) {
     this(type, methodName, SourceInfo.NONE);
   }

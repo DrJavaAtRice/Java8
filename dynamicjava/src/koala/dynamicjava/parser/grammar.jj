@@ -795,7 +795,7 @@ PARSER_END(Parser)
     | < CLASS: "class" >
     | < CONST: "const" >
     | < CONTINUE: "continue" >
-    | < DEFAULT: "default" >
+    | < _DEFAULT: "default" >
     | < DO: "do" >
     | < DOUBLE: "double" >
     | < ELSE: "else" >
